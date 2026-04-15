@@ -1,0 +1,119 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database (Default)
+  # To use PostgreSQL, keep this service enabled and set DB_TYPE=postgres in backend environment
+  postgres:
+    image: postgres:15-alpine
+    container_name: task_management_db
+    environment:
+      POSTGRES_USER: taskuser
+      POSTGRES_PASSWORD: taskpass
+      POSTGRES_DB: task_management
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taskuser"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MySQL Database (Optional)
+  # To use MySQL instead of PostgreSQL:
+  # 1. Comment out the postgres service above
+  # 2. Uncomment this mysql service
+  # 3. Update backend environment to use DB_TYPE=mysql and MYSQL_URL
+  # mysql:
+  #   image: mysql:8.0
+  #   container_name: task_management_mysql
+  #   environment:
+  #     MYSQL_ROOT_PASSWORD: rootpass
+  #     MYSQL_USER: taskuser
+  #     MYSQL_PASSWORD: taskpass
+  #     MYSQL_DATABASE: task_management
+  #   ports:
+  #     - "3307:3306"
+  #   volumes:
+  #     - mysql_data:/var/lib/mysql
+  #   healthcheck:
+  #     test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "taskuser", "-ptaskpass"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+
+  # MongoDB Database (Optional)
+  # To use MongoDB instead of PostgreSQL:
+  # 1. Comment out the postgres service above
+  # 2. Uncomment this mongodb service
+  # 3. Update backend environment to use DB_TYPE=mongodb and MONGODB_URL
+  # mongodb:
+  #   image: mongo:6.0
+  #   container_name: task_management_mongodb
+  #   environment:
+  #     MONGO_INITDB_ROOT_USERNAME: taskuser
+  #     MONGO_INITDB_ROOT_PASSWORD: taskpass
+  #     MONGO_INITDB_DATABASE: task_management
+  #   ports:
+  #     - "27017:27017"
+  #   volumes:
+  #     - mongodb_data:/data/db
+  #   healthcheck:
+  #     test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: task_management_api
+    environment:
+      PORT: 8000
+      NODE_ENV: production
+      # Database Configuration - Choose one based on your database service
+      DB_TYPE: postgres
+      POSTGRES_URL: postgresql://taskuser:taskpass@postgres:5432/task_management
+      # For MySQL, uncomment and use these instead:
+      # DB_TYPE: mysql
+      # MYSQL_URL: mysql://taskuser:taskpass@mysql:3306/task_management
+      # For MongoDB, uncomment and use these instead:
+      # DB_TYPE: mongodb
+      # MONGODB_URL: mongodb://taskuser:taskpass@mongodb:27017/task_management
+      JWT_SECRET: ${JWT_SECRET:-your_super_secret_jwt_key_change_this_in_production}
+      JWT_EXPIRES_IN: 7d
+      FRONTEND_URL: http://localhost:5173
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      # If using MySQL, change to:
+      # mysql:
+      #   condition: service_healthy
+      # If using MongoDB, change to:
+      # mongodb:
+      #   condition: service_healthy
+    volumes:
+      - ./backend/logs:/app/logs
+    command: sh -c "npm run prisma:generate && npm run prisma:migrate && npm start"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: task_management_ui
+    environment:
+      VITE_API_URL: http://localhost:3000/api
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  # Uncomment these volumes if using MySQL or MongoDB
+  # mysql_data:
+  # mongodb_data:
